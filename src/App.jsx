@@ -7,13 +7,16 @@ import React from 'react';
 function App() {
   const [tweets, setTweets] = useState([]);
   const [filteredTweets, setFilteredTweets] = useState([]);
+  const [avatarMap, setAvatarMap] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState('likes');
+  const [sortBy, setSortBy] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
   const [minLikes, setMinLikes] = useState('');
   const [minRetweets, setMinRetweets] = useState('');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [mediaType, setMediaType] = useState('all');
+  const [author, setAuthor] = useState('all');
+  const [topAuthors, setTopAuthors] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
@@ -39,9 +42,23 @@ function App() {
     // 搜索过滤
     if (searchTerm) {
       filtered = filtered.filter(tweet => 
-        tweet.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        tweet.author_name.toLowerCase().includes(searchTerm.toLowerCase())
+        tweet.text.toLowerCase().includes(searchTerm.toLowerCase())
       );
+    }
+
+    // 媒体类型过滤
+    if (mediaType !== 'all') {
+      filtered = filtered.filter(tweet => {
+        if (mediaType === 'text') return tweet.media_type === 'No media';
+        if (mediaType === 'image') return tweet.media_type === 'Image';
+        if (mediaType === 'video') return tweet.media_type === 'Video';
+        return true;
+      });
+    }
+
+    // 作者过滤
+    if (author !== 'all') {
+      filtered = filtered.filter(tweet => tweet.author_handle === author);
     }
 
     // 最小点赞数过滤
@@ -64,11 +81,6 @@ function App() {
       });
     }
 
-    // 媒体类型过滤
-    if (mediaType !== 'all') {
-      filtered = filtered.filter(tweet => tweet.media_type === mediaType);
-    }
-
     // 排序
     filtered.sort((a, b) => {
       let comparison = 0;
@@ -78,19 +90,72 @@ function App() {
         comparison = (b.num_like || 0) - (a.num_like || 0);
       } else if (sortBy === 'retweets') {
         comparison = (b.num_retweet || 0) - (a.num_retweet || 0);
+      } else if (sortBy === 'replies') {
+        comparison = (b.num_reply || 0) - (a.num_reply || 0);
+      } else if (sortBy === 'views') {
+        comparison = (b.num_views || 0) - (a.num_views || 0);
       }
       return sortOrder === 'asc' ? -comparison : comparison;
     });
 
     setFilteredTweets(filtered);
-  }, [searchTerm, tweets, sortBy, sortOrder, minLikes, minRetweets, dateRange, mediaType]);
+  }, [searchTerm, tweets, sortBy, sortOrder, minLikes, minRetweets, dateRange, mediaType, author]);
+
+  // 读取头像数据
+  useEffect(() => {
+    const fetchAvatarData = async () => {
+      try {
+        const response = await fetch('/data/author_avatar.jsonl');
+        const text = await response.text();
+        const lines = text.split('\n').filter(line => line.trim());
+        const avatarData = {};
+        lines.forEach(line => {
+          try {
+            const data = JSON.parse(line);
+            avatarData[data.author_handle] = data.avatar_url;
+          } catch (e) {
+            console.error('解析头像数据失败:', e);
+          }
+        });
+        setAvatarMap(avatarData);
+      } catch (e) {
+        console.error('读取头像数据失败:', e);
+      }
+    };
+    fetchAvatarData();
+  }, []);
+
+  // 计算top20作者
+  useEffect(() => {
+    const authorCounts = {};
+    tweets.forEach(tweet => {
+      if (tweet.author_handle) {
+        authorCounts[tweet.author_handle] = authorCounts[tweet.author_handle] || {
+          count: 0,
+          name: tweet.author_name
+        };
+        authorCounts[tweet.author_handle].count++;
+      }
+    });
+
+    const sortedAuthors = Object.entries(authorCounts)
+      .sort(([, a], [, b]) => b.count - a.count)
+      .slice(0, 20)
+      .map(([handle, data]) => ({
+        handle,
+        name: data.name,
+        count: data.count
+      }));
+
+    setTopAuthors(sortedAuthors);
+  }, [tweets]);
 
   const handleSearch = (term) => {
     setSearchTerm(term);
   };
 
-  const handleFilterChange = (type, value) => {
-    switch (type) {
+  const handleFilterChange = (key, value) => {
+    switch (key) {
       case 'sortBy':
         setSortBy(value);
         break;
@@ -108,6 +173,9 @@ function App() {
         break;
       case 'mediaType':
         setMediaType(value);
+        break;
+      case 'author':
+        setAuthor(value);
         break;
       case 'itemsPerPage':
         setItemsPerPage(value);
@@ -128,6 +196,18 @@ function App() {
     window.scrollTo(0, 0);
   };
 
+  const handleMediaTypeChange = (type) => {
+    setMediaType(type);
+    // 重置分页状态
+    setCurrentPage(1);
+  };
+
+  // 处理每页显示数量变化
+  const handleItemsPerPageChange = (value) => {
+    setItemsPerPage(value);
+    setCurrentPage(1); // 重置到第一页
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-6">
@@ -139,6 +219,9 @@ function App() {
               onFilterChange={handleFilterChange} 
               mediaType={mediaType}
               itemsPerPage={itemsPerPage}
+              author={author}
+              topAuthors={topAuthors}
+              onMediaTypeChange={handleMediaTypeChange}
             />
           </div>
           <div className="w-1/6">
@@ -148,7 +231,7 @@ function App() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {currentTweets.map((tweet) => (
-            <TweetCard key={tweet.id} tweet={tweet} />
+            <TweetCard key={tweet.url} tweet={tweet} avatarMap={avatarMap} />
           ))}
         </div>
 
