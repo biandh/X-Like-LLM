@@ -110,6 +110,9 @@ npm run dev
 ```
 http://localhost:3000
 ```
+<div style="text-align: center;">
+   <img src="img/step3.png" width="400">
+   </div>
 
 ### 前端功能
 
