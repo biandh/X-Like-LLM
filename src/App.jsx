@@ -105,14 +105,14 @@ function App() {
   useEffect(() => {
     const fetchAvatarData = async () => {
       try {
-        const response = await fetch('/data/author_avatar.jsonl');
+        const response = await fetch('/data/x.jsonl');
         const text = await response.text();
         const lines = text.split('\n').filter(line => line.trim());
         const avatarData = {};
         lines.forEach(line => {
           try {
             const data = JSON.parse(line);
-            avatarData[data.author_handle] = data.avatar_url;
+            avatarData[data.author_handle] = data.author_avatar;
           } catch (e) {
             console.error('解析头像数据失败:', e);
           }
