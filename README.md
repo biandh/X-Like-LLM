@@ -74,6 +74,15 @@ scraper.fetch_tweets(
 )
 ```
 
+### Data File Naming
+
+The scraped data is saved with the current timestamp as the filename (e.g., `2024-04-10_15-30-45.jsonl`). To enable frontend display, you need to rename the data file to `x.jsonl` in the `data/` directory:
+
+```bash
+cd data/
+mv 2024-04-10_15-30-45.jsonl x.jsonl
+```
+
 ### Start Frontend Display
 
 1. Start the development server:
@@ -138,7 +147,7 @@ from x_media_scraper import download_video
 
 # Download a single video
 download_video(
-    "https://twitter.com/username/status/123456789",
+    "https://twitter.com/userid/status/123456789",
     "output.mp4",
     target_all_videos=False  # Set to True to download all videos in a thread
 )

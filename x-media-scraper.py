@@ -295,7 +295,7 @@ def download_parts(url, output_filename):
             r = requests.get(part_url, stream=True)
             for chunk in r.iter_content(chunk_size=1024):
                 if chunk:
-                f.write(chunk)
+                    f.write(chunk)
                     f.flush()
 
     return True
@@ -355,7 +355,7 @@ def download_video(tweet_url, output_file, target_all_videos=False):
                                     f.flush()
                     video_counter += 1
             else:
-        original_url = repost_check(resp.text)
+                original_url = repost_check(resp.text)
 
         if original_url:
             download_video(original_url, output_file)
@@ -503,7 +503,7 @@ def main():
 
 if __name__ == "__main__":
 
-    url = 'https://x.com/LostXtui/status/1909789139475792090'
+    url = 'https://x.com/aigclink/status/1909792992459936027'
     res = get_video_info(url)
     print(json.dumps(res, indent=2))
     # main()
