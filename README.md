@@ -83,7 +83,7 @@ npm run dev
 
 2. Access in your browser:
 ```
-http://localhost:5173
+http://localhost:3000
 ```
 
 ### Frontend Features

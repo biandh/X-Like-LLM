@@ -81,7 +81,7 @@ npm run dev
 
 2. 在浏览器中访问：
 ```
-http://localhost:5173
+http://localhost:3000
 ```
 
 ### 前端功能
