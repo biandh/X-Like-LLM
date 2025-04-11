@@ -1,84 +1,201 @@
-# X-Like LLM
+# X-Like-LLM
 
-一个基于 React 的推文展示应用，支持多种媒体类型和高级筛选功能。
+[中文文档](README_ZH.md)
 
-## 功能特点
+A tool for scraping and analyzing Twitter (X) likes data.
 
-### 1. 搜索功能
-- 支持关键词搜索
-- 实时搜索反馈
+## Features
 
-### 2. 高级筛选
-- 排序功能：
-  - 按日期排序（最新/最早）
-  - 按点赞数排序（最多/最少）
-  - 按转发数排序（最多/最少）
-- 数值筛选：
-  - 最小点赞数筛选
-  - 最小转发数筛选
-- 媒体类型筛选：
-  - 全部内容
-  - 纯文本内容
-  - 图文内容
-  - 视频内容
+- Scrape Twitter likes data with detailed information
+- Support for both image and video content
+- Automatic handling of non-viewable posts
+- User avatar collection
+- Data export to JSON and Excel formats
+- Intelligent scrolling mechanism for large datasets
+- Video content extraction and download with multiple quality options
+- Beautiful frontend interface with advanced filtering and sorting capabilities
 
-### 3. 分页功能
-- 支持自定义每页显示数量（50/100/200/500）
-- 分页导航（首页/上一页/页码/下一页/末页）
-- 自动滚动到顶部
+## Requirements
 
-### 4. 卡片展示
-- 支持多种媒体类型：
-  - 纯文本卡片（白色背景）
-  - 图文卡片（黄色渐变背景）
-  - 视频卡片（绿色渐变背景）
-- 自适应布局：
-  - 响应式网格布局
-  - 自动调整卡片大小
-  - 图片自适应显示
+- Python 3.8+
+- Chrome browser
+- Node.js 16+
+- Required Python packages:
+  - selenium
+  - pandas
+  - tenacity
+  - loguru
+  - requests
+  - beautifulsoup4
+- Required Node.js packages:
+  - react
+  - tailwindcss
+  - react-icons
 
-## 技术栈
+## Installation
 
-- React
-- Tailwind CSS
-- React Icons
-
-## 安装和运行
-
-1. 克隆仓库
+1. Clone the repository:
 ```bash
-git clone [repository-url]
+git clone https://github.com/yourusername/X-Like-LLM.git
+cd X-Like-LLM
 ```
 
-2. 安装依赖
+2. Install Python dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+3. Install frontend dependencies:
 ```bash
 npm install
 ```
 
-3. 运行开发服务器
+4. Configure your Twitter auth token in `config.py`:
+```python
+TWITTER_AUTH_TOKEN = "your_auth_token_here"
+```
+
+## Usage
+
+### Basic Usage
+
+```python
+from x_like_scrap import TwitterExtractor
+
+# Initialize the scraper
+scraper = TwitterExtractor()
+
+# Fetch tweets from likes
+scraper.fetch_tweets(
+    "https://twitter.com/username/likes",
+    start_date="2024-01-01",
+    end_date="2024-04-10",
+    method='remove'  # Use 'remove' for accounts with less than 1000 likes
+)
+```
+
+### Start Frontend Display
+
+1. Start the development server:
 ```bash
 npm run dev
 ```
 
-4. 构建生产版本
-```bash
-npm run build
+2. Access in your browser:
+```
+http://localhost:5173
 ```
 
-## 使用说明
+### Frontend Features
 
-1. 使用搜索框进行关键词搜索
-2. 使用筛选栏进行高级筛选：
-   - 选择排序方式和顺序
-   - 设置最小点赞数和转发数
-   - 选择媒体类型
-   - 调整每页显示数量
-3. 使用分页导航浏览更多内容
+- Search functionality:
+  - Keyword search
+  - Real-time search feedback
 
-## 贡献
+- Advanced filtering:
+  - Sorting options:
+    - By date (newest/oldest)
+    - By likes (most/least)
+    - By retweets (most/least)
+  - Numerical filters:
+    - Minimum likes
+    - Minimum retweets
+  - Media type filters:
+    - All content
+    - Text only
+    - Image content
+    - Video content
 
-欢迎提交 Issue 和 Pull Request 来改进项目。
+- Pagination:
+  - Customizable items per page (50/100/200/500)
+  - Page navigation (first/previous/numbers/next/last)
+  - Auto-scroll to top
 
-## 许可证
+- Card display:
+  - Multiple media types:
+    - Text cards (white background)
+    - Image cards (yellow gradient background)
+    - Video cards (green gradient background)
+  - Adaptive layout:
+    - Responsive grid
+    - Auto-adjusting card sizes
+    - Adaptive image display
 
-MIT 
+### Video Download Options
+
+#### 1. Get Video Information
+```python
+from x_media_scraper import get_video_info
+
+# Get video information including all quality options
+video_info = get_video_info("https://x.com/imxiaohu/status/1771521124326834465")
+print(json.dumps(video_info, indent=2))
+```
+
+#### 2. Download Single Video
+```python
+from x_media_scraper import download_video
+
+# Download a single video
+download_video(
+    "https://twitter.com/username/status/123456789",
+    "output.mp4",
+    target_all_videos=False  # Set to True to download all videos in a thread
+)
+```
+
+#### 3. Get Video URLs Only
+```python
+from x_media_scraper import get_video_url
+
+# Get video URLs without downloading
+video_urls = get_video_url("https://twitter.com/username/status/123456789")
+```
+
+## Data Structure
+
+The scraped data includes:
+- Tweet text
+- Author information (name, handle, avatar)
+- Post date
+- Media type (Image/Video)
+- Media URLs
+- Engagement metrics (views, likes, retweets, replies)
+- Tweet URL
+- Mentioned URLs
+- Video information:
+  - Video URL
+  - Thumbnail URL
+  - Quality variants (bitrate and resolution)
+  - Duration
+  - Format
+
+## Output Files
+
+- JSONL file: Contains raw tweet data
+- Excel file: Processed and deduplicated data
+- Avatar JSONL: User avatar information
+- Video files: Downloaded video content in MP4 format with multiple quality options
+
+## Notes
+
+- The tool includes mechanisms to handle non-viewable posts and rate limiting
+- For large datasets, it's recommended to use the 'scroll' method instead of 'remove'
+- The tool automatically handles timeouts and retries
+- User avatars are saved separately to avoid duplicate fetching
+- Video downloads support:
+  - Multiple quality options
+  - Automatic selection of best available quality
+  - Concurrent downloads for efficiency
+  - Retry mechanism for failed downloads
+  - Support for video threads and retweets
+- Failed downloads are logged and can be retried later
+- Frontend display requires correct data file paths
+
+## License
+
+MIT License
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. 
