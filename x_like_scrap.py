@@ -12,17 +12,12 @@ import json
 import time
 import pandas as pd
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
-import logging
+from loguru import logger
 from config import TWITTER_AUTH_TOKEN
 import requests
 from bs4 import BeautifulSoup
 import os
 
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -32,6 +27,8 @@ class TwitterExtractor:
     def __init__(self, headless=True):
         self.driver = self._start_chrome(headless)
         self.set_token()
+        self.consecutive_invisible_tweets = 0  # 添加计数器
+        self.attempt_count = 0  # 添加尝试次数计数器
 
     def _start_chrome(self, headless):
         options = Options()
@@ -75,88 +72,74 @@ class TwitterExtractor:
             print(f"获取用户头像失败: {e}")
             return "https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png"
 
-    def fetch_tweets(self, page_url, start_date, end_date):
-        self.driver.get(page_url)
-        cur_filename = f"data/tweets_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-
-        # Convert start_date and end_date from "YYYY-MM-DD" to datetime objects
-        start_date = datetime.strptime(start_date, "%Y-%m-%d")
-        end_date = datetime.strptime(end_date, "%Y-%m-%d")
-
-        while True:
-            tweet = self._get_first_tweet()
-            if not tweet:
-                continue
-
-            row = self._process_tweet(tweet)
-            if row["date"]:
-                try:
-                    date = datetime.strptime(row["date"], "%Y-%m-%d")
-
-                except ValueError as e:
-                    # infer date format
-                    logger.info(
-                        f"Value error on date format, trying another format.{row['date']}",
-                        e,
-                    )
-                    date = datetime.strptime(row["date"], "%d/%m/%Y")
-
-                if date < start_date:
-                    break
-                elif date > end_date:
-                    self._delete_first_tweet()
-                    continue
-
-            self._save_to_json(row, filename=f"{cur_filename}.jsonl")
-            logger.info(
-                f"Saving tweets...\n{row['date']},  {row['author_name']} -- {row['text'][:50]}...\n\n"
-            )
-            self._delete_first_tweet()
-
-        # Save to Excel
-        self._save_to_excel(
-            json_filename=f"{cur_filename}.jsonl", output_filename=f"{cur_filename}.xlsx"
-        )
+    def scroll_down(self, pixels=500):
+        """向下滚动页面"""
+        self.driver.execute_script(f"window.scrollBy(0, {pixels});")
+        time.sleep(2)  # 等待内容加载
 
     @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_fixed(2),
+        stop=stop_after_attempt(10),
+        wait=wait_fixed(3),
         retry=retry_if_exception_type((TimeoutException, NoSuchElementException, StaleElementReferenceException)),
     )
-    def _get_first_tweet(
-        self, timeout=10, use_hacky_workaround_for_reloading_issue=True
-    ):
+    def _get_first_tweet(self, timeout=20, use_hacky_workaround_for_reloading_issue=True):
         try:
+            # 每10次尝试才滚动一次
+            self.attempt_count += 1
+            if self.attempt_count % 100 == 0:
+                logger.info("尝试次数达到100次，向下滚动...")
+                self.scroll_down()
+                time.sleep(3)  # 等待内容加载
+                self.attempt_count = 0  # 重置计数器
+
+            # 检查页面是否加载完成
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    lambda d: d.execute_script("return document.readyState") == "complete"
+                )
+            except TimeoutException:
+                logger.warning("页面加载超时，继续尝试...")
+
             # Wait for either a tweet or the error message to appear
             WebDriverWait(self.driver, timeout).until(
                 lambda d: d.find_elements(By.XPATH, "//article[@data-testid='tweet']")
                 or d.find_elements(By.XPATH, "//span[contains(text(),'Try reloading')]")
+                or d.find_elements(By.XPATH, "//span[contains(text(),'Something went wrong')]")
             )
 
             # Check for error message and try to click "Retry" if it's present
             error_message = self.driver.find_elements(
                 By.XPATH, "//span[contains(text(),'Try reloading')]"
             )
-            if error_message and use_hacky_workaround_for_reloading_issue:
-                logger.info(
-                    "Encountered 'Something went wrong. Try reloading.' error.\nTrying to resolve with a hacky workaround (click on another tab and switch back). Note that this is not optimal.\n"
-                )
-                logger.info(
-                    "You do not have to worry about data duplication though. The save to excel part does the dedup."
-                )
-                self._navigate_tabs()
-
-                WebDriverWait(self.driver, timeout).until(
-                    lambda d: d.find_elements(
-                        By.XPATH, "//article[@data-testid='tweet']"
+            if error_message:
+                self.consecutive_invisible_tweets += 1
+                if self.consecutive_invisible_tweets > 2:  # 连续3次遇到不可见帖子
+                    logger.info("连续遇到不可见帖子，尝试向下滚动...")
+                    self.scroll_down()
+                    self.consecutive_invisible_tweets = 0
+                    time.sleep(3)  # 等待新内容加载
+                    return self._get_first_tweet()  # 递归调用，尝试获取新的推文
+                elif use_hacky_workaround_for_reloading_issue:
+                    logger.info(
+                        "Encountered 'Something went wrong. Try reloading.' error.\nTrying to resolve with a hacky workaround (click on another tab and switch back). Note that this is not optimal.\n"
                     )
-                )
-            elif error_message and not use_hacky_workaround_for_reloading_issue:
-                raise TimeoutException(
-                    "Error message present. Not using hacky workaround."
-                )
+                    logger.info(
+                        "You do not have to worry about data duplication though. The save to excel part does the dedup."
+                    )
+                    self._navigate_tabs()
 
+                    WebDriverWait(self.driver, timeout).until(
+                        lambda d: d.find_elements(
+                            By.XPATH, "//article[@data-testid='tweet']"
+                        )
+                    )
+                else:
+                    raise TimeoutException(
+                        "Error message present. Not using hacky workaround."
+                    )
             else:
+                # 如果成功获取到推文，重置计数器
+                self.consecutive_invisible_tweets = 0
                 # If no error message, assume tweet is present
                 return self.driver.find_element(
                     By.XPATH, "//article[@data-testid='tweet']"
@@ -164,9 +147,27 @@ class TwitterExtractor:
 
         except TimeoutException:
             logger.error("Timeout waiting for tweet or after clicking 'Retry'")
+            # 在超时时也尝试向下滚动
+            if self.attempt_count % 100 == 0:
+                self.scroll_down()
+                time.sleep(3)
+            
+            # 添加暂停机制
+            logger.info("遇到超时，请手动刷新页面后按回车继续...")
+            input("按回车继续...")
+            
             raise
         except NoSuchElementException:
             logger.error("Could not find tweet or 'Retry' button")
+            # 在找不到元素时也尝试向下滚动
+            if self.attempt_count % 100 == 0:
+                self.scroll_down()
+                time.sleep(3)
+            
+            # 添加暂停机制
+            logger.info("找不到元素，请手动刷新页面后按回车继续...")
+            input("按回车继续...")
+            
             raise
 
     def _navigate_tabs(self, target_tab="Likes"):
@@ -182,18 +183,24 @@ class TwitterExtractor:
         except NoSuchElementException as e:
             logger.error("Error navigating tabs: " + str(e))
 
-    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_fixed(2),
+        retry=retry_if_exception_type((StaleElementReferenceException, NoSuchElementException)),
+    )
     def _process_tweet(self, tweet):
         try:
-            # 重新获取元素，避免 stale element 问题
-            tweet = self.driver.find_element(
-                By.XPATH, "//article[@data-testid='tweet']"
-            )
-            
-            author_name, author_handle = self._extract_author_details(tweet)
-            
-            # 获取推文文本
-            text = self._get_element_text(tweet, ".//div[@data-testid='tweetText']")
+            # 先尝试使用传入的元素
+            try:
+                author_name, author_handle = self._extract_author_details(tweet)
+                text = self._get_element_text(tweet, ".//div[@data-testid='tweetText']")
+            except StaleElementReferenceException:
+                # 如果元素过时，才重新获取
+                tweet = WebDriverWait(self.driver, 10).until(
+                    lambda d: d.find_element(By.XPATH, "//article[@data-testid='tweet'][1]")
+                )
+                author_name, author_handle = self._extract_author_details(tweet)
+                text = self._get_element_text(tweet, ".//div[@data-testid='tweetText']")
             
             # 获取卡片标题
             card_title = self._get_element_text(tweet, "div[data-testid='twitter-article-title']")
@@ -404,14 +411,61 @@ class TwitterExtractor:
         except:
             return 0
 
-    def _delete_first_tweet(self, sleep_time_range_ms=(0, 1000)):
+    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
+    def _delete_first_tweet(self, current_url):
         try:
-            tweet = self.driver.find_element(
-                By.XPATH, "//article[@data-testid='tweet'][1]"
+            # 获取要删除的 cellInnerDiv
+            cell_div = WebDriverWait(self.driver, 10).until(
+                lambda d: d.find_element(By.XPATH, "//div[@data-testid='cellInnerDiv'][.//article[@data-testid='tweet'] or .//span[contains(text(),'受年龄限制的成人内容')] or .//span[contains(text(),'这个帖子不可用')]][1]")
             )
-            self.driver.execute_script("arguments[0].remove();", tweet)
-        except NoSuchElementException:
-            logger.info("Could not find the first tweet to delete.")
+            
+            # 尝试删除3次
+            for attempt in range(3):
+                try:
+                    # 执行删除操作
+                    self.driver.execute_script("arguments[0].remove();", cell_div)
+                    # time.sleep(0.1 * (2**attempt))  # 等待删除操作完成
+                    
+                    # 检查是否删除成功
+                    try:
+                        # 获取删除后的第一个推文
+                        new_tweet = WebDriverWait(self.driver, 2).until(
+                            lambda d: d.find_element(By.XPATH, "//article[@data-testid='tweet'][1]")
+                        )
+                        new_url = self._get_tweet_url(new_tweet)
+                        
+                        # 如果 URL 相同，说明删除失败
+                        if new_url == current_url:
+                            logger.warning(f"删除推文失败，URL 相同，尝试第 {attempt + 1} 次")
+                            # 重新获取 cellInnerDiv
+                            cell_div = WebDriverWait(self.driver, 10).until(
+                                lambda d: d.find_element(By.XPATH, "//div[@data-testid='cellInnerDiv'][.//article[@data-testid='tweet'] or .//span[contains(text(),'受年龄限制的成人内容')] or .//span[contains(text(),'这个帖子不可用')]][1]")
+                            )
+                            continue
+                        else:
+                            # URL 不同，说明删除成功
+                            logger.info("推文删除成功")
+                            return
+                            
+                    except (NoSuchElementException, TimeoutException):
+                        # 获取不到说明删除成功
+                        logger.info("推文删除成功")
+                        return
+                        
+                except StaleElementReferenceException:
+                    # 如果元素过时，重新获取
+                    logger.info('元素可能过时，重新获取....')
+                    cell_div = WebDriverWait(self.driver, 10).until(
+                        lambda d: d.find_element(By.XPATH, "//div[@data-testid='cellInnerDiv'][.//article[@data-testid='tweet'] or .//span[contains(text(),'受年龄限制的成人内容')] or .//span[contains(text(),'这个帖子不可用')]][1]")
+                    )
+                    continue
+            
+            # 如果3次都失败，抛出异常
+            raise Exception("删除推文失败，已尝试3次")
+                
+        except (NoSuchElementException, StaleElementReferenceException) as e:
+            logger.warning(f"删除推文时出错: {e}")
+            return
 
     @staticmethod
     def _save_to_json(data, filename="data.json"):
@@ -448,6 +502,131 @@ class TwitterExtractor:
         except:
             pass
         return 0
+
+    def fetch_tweets(self, page_url, start_date, end_date, method='remove'):
+        self.driver.get(page_url)
+        cur_filename = f"data/tweets_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+        self.consecutive_invisible_tweets = 0  # 重置计数器
+        processed_urls = set()  # 用于记录已处理的 URL
+        tweet_count = 0  # 记录已获取的帖子数量
+
+        # Convert start_date and end_date from "YYYY-MM-DD" to datetime objects
+        start_date = datetime.strptime(start_date, "%Y-%m-%d")
+        end_date = datetime.strptime(end_date, "%Y-%m-%d")
+
+        while True:
+            # 根据已获取的帖子数量决定使用哪种方式
+            if method == 'remove':
+                # 使用删除方式
+                tweet = self._get_first_tweet()
+                if not tweet:
+                    logger.info("未获取到推文，尝试向下滚动...")
+                    self.scroll_down(20)
+                    time.sleep(0.5)
+                    continue
+
+                try:
+                    # 获取推文 URL
+                    url = self._get_tweet_url(tweet)
+                    
+                    # 如果 URL 已处理过，跳过
+                    if url in processed_urls:
+                        self._delete_first_tweet(url)
+                        continue
+                    
+                    # 处理推文
+                    row = self._process_tweet(tweet)
+                    if row["date"]:
+                        try:
+                            date = datetime.strptime(row["date"], "%Y-%m-%d")
+                        except ValueError as e:
+                            logger.info(
+                                f"Value error on date format, trying another format.{row['date']}",
+                                e,
+                            )
+                            date = datetime.strptime(row["date"], "%d/%m/%Y")
+
+                        if date < start_date:
+                            return  # 如果日期早于开始日期，结束程序
+                        elif date > end_date:
+                            self._delete_first_tweet(url)
+                            continue
+
+                    # 保存推文
+                    self._save_to_json(row, filename=f"{cur_filename}.jsonl")
+                    logger.info(
+                        f"Saving tweets...\n{row['date']},  {row['author_name']} -- {row['text'][:50]}...\n\n"
+                    )
+                    
+                    # 记录已处理的 URL 和增加计数
+                    processed_urls.add(url)
+                    tweet_count += 1
+                    
+                except Exception as e:
+                    logger.error(f"处理推文时出错: {e}")
+                    continue
+                
+                # 删除已处理的推文
+                self._delete_first_tweet(url)
+                
+            else:
+                # 使用滚动方式
+                tweets = WebDriverWait(self.driver, 10).until(
+                    lambda d: d.find_elements(By.XPATH, "//article[@data-testid='tweet']")
+                )
+                
+                # 如果没有推文，尝试向下滚动
+                if not tweets:
+                    logger.info("未获取到推文，尝试向下滚动...")
+                    self.scroll_down(4000)
+                    time.sleep(0.1)
+                    continue
+                
+                # 处理每个推文
+                for tweet in tweets:
+                    try:
+                        # 获取推文 URL
+                        url = self._get_tweet_url(tweet)
+                        
+                        # 如果 URL 已处理过，跳过
+                        if url in processed_urls:
+                            continue
+                        
+                        # 处理推文
+                        row = self._process_tweet(tweet)
+                        if row["date"]:
+                            try:
+                                date = datetime.strptime(row["date"], "%Y-%m-%d")
+                            except ValueError as e:
+                                logger.info(
+                                    f"Value error on date format, trying another format.{row['date']}",
+                                    e,
+                                )
+                                date = datetime.strptime(row["date"], "%d/%m/%Y")
+
+                            if date < start_date:
+                                return  # 如果日期早于开始日期，结束程序
+                            elif date > end_date:
+                                continue  # 如果日期晚于结束日期，跳过
+
+                        # 保存推文
+                        self._save_to_json(row, filename=f"{cur_filename}.jsonl")
+                        logger.info(f"Saving tweets...\n{row['date']},  {row['author_name']} -- {row['text'][:50]}...\n\n")
+                        
+                        # 记录已处理的 URL 和增加计数
+                        processed_urls.add(url)
+                        tweet_count += 1
+                        
+                    except Exception as e:
+                        logger.error(f"处理推文时出错: {e}")
+                        continue
+                
+                # 向下滚动
+                self.scroll_down(2000)
+                time.sleep(0.5)
+
+        # Save to Excel
+        self._save_to_excel(json_filename=f"{cur_filename}.jsonl", output_filename=f"{cur_filename}.xlsx")
 
 def get_author_avatar(jsonl_file="data/x.jsonl", output_file="data/author_avatar.jsonl"):
     """
@@ -544,6 +723,7 @@ if __name__ == "__main__":
     scraper = TwitterExtractor()
     scraper.fetch_tweets(
         "https://twitter.com/tim4sk/likes",
-        start_date="2025-01-01",
-        end_date="2025-04-09",
-    )  # YYYY-MM-DD format
+        start_date="2022-01-01",
+        end_date="2025-04-10",
+        method='remove' # 如果你的喜欢贴上数量少于1000个，使用remove
+    )
