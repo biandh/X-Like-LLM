@@ -53,6 +53,20 @@ npm install
 TWITTER_AUTH_TOKEN = "your_auth_token_here"
 ```
 
+### 如何获取Twitter认证令牌
+
+1. 打开Twitter网页版并登录
+2. 打开开发者工具：
+   - 点击右上角设置
+   - 选择"更多工具"
+   - 点击"开发者工具"
+   ![打开开发者工具](img/step1.png)
+3. 获取认证令牌：
+   - 在开发者工具中切换到"Application"标签
+   - 在左侧找到并点击"Cookies"
+   - 找到名为"auth_token"的项，其值即为所需的认证令牌
+   ![获取认证令牌](img/step2.png)
+
 ## 使用方法
 
 ### 基本使用
@@ -65,7 +79,7 @@ scraper = TwitterExtractor()
 
 # 抓取点赞推文
 scraper.fetch_tweets(
-    "https://twitter.com/username/likes",
+    "https://twitter.com/userid/likes",
     start_date="2024-01-01",
     end_date="2024-04-10",
     method='remove'  # 点赞数少于1000的账号使用'remove'方法

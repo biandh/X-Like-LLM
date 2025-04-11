@@ -723,9 +723,7 @@ def get_author_avatar(jsonl_file="data/x.jsonl", output_file="data/author_avatar
 
 
 if __name__ == "__main__":
-
-    # Example usage
-    # get_author_avatar() # 头像需要单独获取    
+   
 
     scraper = TwitterExtractor()
     scraper.fetch_tweets(

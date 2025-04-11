@@ -55,6 +55,20 @@ npm install
 TWITTER_AUTH_TOKEN = "your_auth_token_here"
 ```
 
+### How to Get Twitter Auth Token
+
+1. Open Twitter web version and log in
+2. Open Developer Tools:
+   - Click the settings icon in the top right
+   - Select "More tools"
+   - Click "Developer tools"
+   ![Open Developer Tools](img/step1.png)
+3. Get the Auth Token:
+   - Switch to the "Application" tab in Developer Tools
+   - Find and click "Cookies" on the left
+   - Look for the "auth_token" item, its value is the auth token you need
+   ![Get Auth Token](img/step2.png)
+
 ## Usage
 
 ### Basic Usage
