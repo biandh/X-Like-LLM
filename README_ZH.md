@@ -60,12 +60,16 @@ TWITTER_AUTH_TOKEN = "your_auth_token_here"
    - 点击右上角设置
    - 选择"更多工具"
    - 点击"开发者工具"
-   <img src="img/step1.png" width="400">
+   <div style="text-align: center;">
+   <img src="img/step1.png" width="200">
+   </div>
 3. 获取认证令牌：
    - 在开发者工具中切换到"Application"标签
    - 在左侧找到并点击"Cookies"
    - 找到名为"auth_token"的项，其值即为所需的认证令牌
-   <img src="img/step2.png" width="400">
+   <div style="text-align: center;">
+   <img src="img/step2.png" width="200">
+   </div>
 
 ## 使用方法
 

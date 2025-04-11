@@ -62,12 +62,16 @@ TWITTER_AUTH_TOKEN = "your_auth_token_here"
    - Click the settings icon in the top right
    - Select "More tools"
    - Click "Developer tools"
-   <img src="img/step1.png" width="400">
+   <div style="text-align: center;">
+   <img src="img/step1.png" width="200">
+   </div>
 3. Get the Auth Token:
    - Switch to the "Application" tab in Developer Tools
    - Find and click "Cookies" on the left
    - Look for the "auth_token" item, its value is the auth token you need
-   <img src="img/step2.png" width="400">
+   <div style="text-align: center;">
+   <img src="img/step2.png" width="200">
+   </div>
 
 ## Usage
 
